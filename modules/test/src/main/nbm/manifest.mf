@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+OpenIDE-Module-Name: test
+OpenIDE-Module-Short-Description: A
+OpenIDE-Module-Long-Description: A
+OpenIDE-Module-Display-Category: Import
