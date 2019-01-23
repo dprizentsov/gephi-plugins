@@ -2,23 +2,27 @@ package com.rocketsoft.test;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.tinkerpop.gremlin.driver.Client;
 import org.apache.tinkerpop.gremlin.driver.Cluster;
 import org.apache.tinkerpop.gremlin.driver.Result;
+import org.apache.tinkerpop.gremlin.driver.ResultSet;
+import org.apache.tinkerpop.gremlin.process.traversal.Path;
 import org.gephi.io.importer.api.ContainerLoader;
 import org.gephi.io.importer.api.Database;
 import org.gephi.io.importer.api.EdgeDraft;
 import org.gephi.io.importer.api.ElementDraft;
 import org.gephi.io.importer.api.NodeDraft;
 import org.gephi.io.importer.api.Report;
-import org.gephi.io.importer.impl.NodeDraftImpl;
 import org.gephi.io.importer.spi.DatabaseImporter;
 import org.apache.tinkerpop.gremlin.structure.Edge;
+import org.apache.tinkerpop.gremlin.structure.Element;
+import org.apache.tinkerpop.gremlin.structure.Property;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.apache.tinkerpop.gremlin.structure.VertexProperty;
 
 /**
  *
@@ -27,6 +31,7 @@ import org.apache.tinkerpop.gremlin.structure.VertexProperty;
 public class GremlinDatabaseImporter implements DatabaseImporter {
   GremlinDatabase database;
   ContainerLoader containerLoader;
+  public String query;
   
   public void setDatabase(Database dtbs) {
     this.database = (GremlinDatabase)dtbs;
@@ -41,22 +46,12 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
     containerLoader.setAllowParallelEdge(true);
     containerLoader.setAllowSelfLoop(true);
     final ElementDraft.Factory factory = cl.factory();
-    /*NodeDraft a1 = factory.newNodeDraft("A1");
-    NodeDraft a2 = factory.newNodeDraft("A2");
-    NodeDraft a3 = factory.newNodeDraft("A3");
-    cl.addNode(a1);
-    cl.addNode(a2);
-    cl.addNode(a3);
-    EdgeDraft newEdgeDraft = factory.newEdgeDraft("A1-A2");
-    newEdgeDraft.setSource(a1);newEdgeDraft.setTarget(a2);
-    cl.addEdge(newEdgeDraft);*/
-    
     
     Cluster cluster = Cluster.build("127.0.0.1").port(8182).create();
     Client client = cluster.connect();
     
     final Map<Long, NodeDraft> nodes = new HashMap<Long, NodeDraft>();
-    try {
+    /*try {
       client.submit("g.V()").all().get().forEach(new Consumer<Result>() {
         @Override
         public void accept(Result r) {
@@ -111,8 +106,110 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
       });
     } catch(Exception ex) {
       ex.printStackTrace();
-    }
+    }*/
+    
+    ResultSet resultSet = client.submit(query);
+    resultSet.forEach(new Consumer<Result>() {
+      @Override
+      public void accept(Result r) {
+        Object resultObject = r.getObject();
+        if (resultObject instanceof Element) {
+          handleElement((Element)resultObject);
+        } else if (resultObject instanceof Path) {
+          handlePath((Path)resultObject);
+        } else {
+          System.out.println("### unknown gremlin result type " + resultObject.getClass().getName());
+        }
+      }
+    });
     return true;
+  }
+  
+  private void handleElement(Element gremlinElement) {
+    ElementDraft.Factory factory = containerLoader.factory();
+    
+    Object gremlinId = gremlinElement.id();
+    String gremlinIdStr = gremlinId.toString();
+    String gremlinLabel = gremlinElement.label();
+    Map<String, Object> gremlinAttributes = null;
+    Set<String> attributeKeys = gremlinElement.keys();
+    if (attributeKeys != null && !attributeKeys.isEmpty()) {
+      gremlinAttributes = new HashMap<String, Object>();
+      for (String attributeKey : attributeKeys) {
+        Iterator pi = gremlinElement.properties(attributeKey);
+        int i = 0;
+        while(pi.hasNext()) {
+          Property p = (Property)pi.next();
+          Object val = p.value();
+          gremlinAttributes.put(attributeKey + "." + i, val);//TODO find out how to show vectorproperty better
+          i++;
+        }
+      }
+    }
+
+    //System.out.println("### " + gremlinIdStr + " " + gremlinLabel);
+
+    if (gremlinElement instanceof Vertex) {
+      Vertex gremlinVertex = (Vertex)gremlinElement;
+      NodeDraft gephiNode = factory.newNodeDraft(gremlinIdStr);
+      setLabel(gephiNode, gremlinLabel);
+      setAttributes(gephiNode, gremlinAttributes);
+      GremlinDatabaseImporter.this.containerLoader.addNode(gephiNode);
+    } else if (gremlinElement instanceof Edge) {
+      Edge gremlinEdge = (Edge)gremlinElement;
+      Vertex outGremlinVertex = gremlinEdge.outVertex();Object outId = outGremlinVertex == null ? -1 : outGremlinVertex.id();
+      Vertex inGremlinVertex = gremlinEdge.inVertex();Object inId = inGremlinVertex == null ? -1 : inGremlinVertex.id();
+      if (outId != null && inId != null) {
+        NodeDraft gephiNodeOut = GremlinDatabaseImporter.this.containerLoader.getNode(outId.toString());
+        NodeDraft gephiNodeIn = GremlinDatabaseImporter.this.containerLoader.getNode(inId.toString());
+        if (gephiNodeOut != null && gephiNodeIn != null) {
+          EdgeDraft gephiEdge = factory.newEdgeDraft(gremlinIdStr);
+          gephiEdge.setSource(gephiNodeOut);gephiEdge.setTarget(gephiNodeIn);
+          setLabel(gephiEdge, gremlinLabel);
+          setAttributes(gephiEdge, gremlinAttributes);
+          GremlinDatabaseImporter.this.containerLoader.addEdge(gephiEdge);
+        } else {
+          if (gephiNodeOut == null) {
+            System.out.println("### Source Node not found " + outId.toString());
+          }
+          if (gephiNodeIn == null) {
+            System.out.println("### Target Node not found " + inId.toString());
+          }
+        }
+      } else {
+        if (outId == null) {
+          System.out.println("### Source Node id is null");
+        }
+        if (inId == null) {
+          System.out.println("### Target Node id is null");
+        }
+      }
+    } else {
+      System.out.println("### unknown gremlin element type " + gremlinElement.getClass().getName());
+    }
+  }
+  
+  private static void setAttributes(ElementDraft gephiElement, Map<String, Object> gremlinAttributes) {
+    if (gremlinAttributes != null) {
+      for (Entry<String, Object> entry : gremlinAttributes.entrySet()) {
+        gephiElement. setValue(entry.getKey(), entry.getValue());
+      }
+    }
+  }
+  
+  private static void setLabel(ElementDraft gephiElement, String label) {
+    gephiElement.setLabel(label);
+  }
+  
+  private void handlePath(Path gremlinPath) {
+    List<Object> objects = gremlinPath.objects();
+    for(Object obj : objects) {
+      if (obj instanceof Element) {
+        handleElement((Element)obj);
+      } else {
+        System.out.println("### unknown object from Path " + obj.getClass().getName());
+      }
+    } 
   }
 
   public ContainerLoader getContainer() {
