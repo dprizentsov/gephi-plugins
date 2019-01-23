@@ -1,17 +1,20 @@
 package com.rocketsoft.test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.apache.tinkerpop.gremlin.driver.Client;
 import org.apache.tinkerpop.gremlin.driver.Cluster;
 import org.apache.tinkerpop.gremlin.driver.Result;
 import org.apache.tinkerpop.gremlin.driver.ResultSet;
 import org.apache.tinkerpop.gremlin.process.traversal.Path;
+import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.gephi.io.importer.api.ContainerLoader;
 import org.gephi.io.importer.api.Database;
 import org.gephi.io.importer.api.EdgeDraft;
@@ -31,6 +34,10 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
 public class GremlinDatabaseImporter implements DatabaseImporter {
   GremlinDatabase database;
   ContainerLoader containerLoader;
+  public String address;
+  public String port;
+  public String username;
+  public String password;
   public String query;
   
   public void setDatabase(Database dtbs) {
@@ -47,7 +54,7 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
     containerLoader.setAllowSelfLoop(true);
     final ElementDraft.Factory factory = cl.factory();
     
-    Cluster cluster = Cluster.build("127.0.0.1").port(8182).create();
+    Cluster cluster = Cluster.build(address).port(Integer.parseInt(port)).create();
     Client client = cluster.connect();
     
     final Map<Long, NodeDraft> nodes = new HashMap<Long, NodeDraft>();
@@ -137,13 +144,13 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
       gremlinAttributes = new HashMap<String, Object>();
       for (String attributeKey : attributeKeys) {
         Iterator pi = gremlinElement.properties(attributeKey);
-        int i = 0;
+        ArrayList<Object> values = new ArrayList<Object>();
         while(pi.hasNext()) {
           Property p = (Property)pi.next();
           Object val = p.value();
-          gremlinAttributes.put(attributeKey + "." + i, val);//TODO find out how to show vectorproperty better
-          i++;
+          values.add(val);
         }
+        gremlinAttributes.put(attributeKey, values);
       }
     }
 
@@ -192,7 +199,7 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
   private static void setAttributes(ElementDraft gephiElement, Map<String, Object> gremlinAttributes) {
     if (gremlinAttributes != null) {
       for (Entry<String, Object> entry : gremlinAttributes.entrySet()) {
-        gephiElement. setValue(entry.getKey(), entry.getValue());
+        gephiElement.setValue(entry.getKey(), entry.getValue().toString());
       }
     }
   }
