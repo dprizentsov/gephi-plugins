@@ -34,6 +34,7 @@ import org.apache.tinkerpop.gremlin.structure.Vertex;
 public class GremlinDatabaseImporter implements DatabaseImporter {
   GremlinDatabase database;
   ContainerLoader containerLoader;
+  ElementDraft.Factory factory;
   public String address;
   public String port;
   public String username;
@@ -52,71 +53,12 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
     this.containerLoader = cl;
     containerLoader.setAllowParallelEdge(true);
     containerLoader.setAllowSelfLoop(true);
-    final ElementDraft.Factory factory = cl.factory();
+    factory = cl.factory();
     
     Cluster cluster = Cluster.build(address).port(Integer.parseInt(port)).create();
     Client client = cluster.connect();
     
-    final Map<Long, NodeDraft> nodes = new HashMap<Long, NodeDraft>();
-    /*try {
-      client.submit("g.V()").all().get().forEach(new Consumer<Result>() {
-        @Override
-        public void accept(Result r) {
-          Vertex v = (Vertex)r.getObject();
-          long id = (Long)v.id();
-          String label = v.label();
-          String keyval = "";
-          Set<String> keys = v.keys();
-          for (String k : keys) {
-            Iterator<VertexProperty<Object>> properties = v.properties(k);
-            String val = "[";
-            while (properties.hasNext()) {
-              Object value = properties.next().value();
-              val += value + ",";
-            }
-            val += "]";
-            Object value = val;
-            keyval += k + "=" + value + ";";
-          }
-          //System.out.println("V id=" + id + " label=" + label + " " + keyval);
-          NodeDraft a1 = factory.newNodeDraft(label + ": " + keyval);
-          nodes.put(id, a1);
-          GremlinDatabaseImporter.this.containerLoader.addNode(a1);
-        }
-      });
-      
-      client.submit("g.E()").all().get().forEach(new Consumer<Result>() {
-        @Override
-        public void accept(Result t) {
-          Edge e = (Edge)t.getObject();
-          long id = (Long)e.id();
-          String label = e.label();
-          String keyval = "";
-          Set<String> keys = e.keys();
-          for (String k : keys) {
-            Object value = e.value(k);
-            keyval += k + "=" + value;
-          }
-          Vertex outVertex = e.outVertex();long outId = outVertex == null ? -1 : (Long)outVertex.id();
-          Vertex inVertex = e.inVertex();long inId = inVertex == null ? -1 : (Long)inVertex.id();
-          //System.out.println("E id=" + id + " from=" + outId + " to=" + inId + " label=" + label + " " + keyval);
-          
-          NodeDraft n0 = nodes.get(outId);
-          NodeDraft n1 = nodes.get(inId);
-          if (n0 != null && n1 != null) {
-            EdgeDraft edge = factory.newEdgeDraft(label + ":" + outId + "-" + outId);
-            edge.setSource(n0);edge.setTarget(n1);
-            edge.setType(label);
-            GremlinDatabaseImporter.this.containerLoader.addEdge(edge);
-          }
-        }
-      });
-    } catch(Exception ex) {
-      ex.printStackTrace();
-    }*/
-    
-    ResultSet resultSet = client.submit(query);
-    resultSet.forEach(new Consumer<Result>() {
+    Consumer<Result> resultHandler = new Consumer<Result>() {
       @Override
       public void accept(Result r) {
         Object resultObject = r.getObject();
@@ -128,13 +70,17 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
           System.out.println("### unknown gremlin result type " + resultObject.getClass().getName());
         }
       }
-    });
+    };
+    client.submit("g.E()").forEach(resultHandler);//get entire griph without node attributes and uncinnected nodes
+    if (query != null && !query.isEmpty()) {//if user specified a request
+      client.submit(query).forEach(resultHandler);
+    }
+    
     return true;
   }
   
-  private void handleElement(Element gremlinElement) {
-    ElementDraft.Factory factory = containerLoader.factory();
-    
+  private ElementDraft handleElement(Element gremlinElement) {
+    ElementDraft gephiElement;
     Object gremlinId = gremlinElement.id();
     String gremlinIdStr = gremlinId.toString();
     String gremlinLabel = gremlinElement.label();
@@ -158,42 +104,62 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
 
     if (gremlinElement instanceof Vertex) {
       Vertex gremlinVertex = (Vertex)gremlinElement;
-      NodeDraft gephiNode = factory.newNodeDraft(gremlinIdStr);
+      NodeDraft gephiNode = GremlinDatabaseImporter.this.containerLoader.getNode(gremlinIdStr);
+      if (gephiNode == null) {
+        gephiNode = factory.newNodeDraft(gremlinIdStr);
+        GremlinDatabaseImporter.this.containerLoader.addNode(gephiNode);
+      }
       setLabel(gephiNode, gremlinLabel);
       setAttributes(gephiNode, gremlinAttributes);
-      GremlinDatabaseImporter.this.containerLoader.addNode(gephiNode);
+      gephiElement = gephiNode;
     } else if (gremlinElement instanceof Edge) {
       Edge gremlinEdge = (Edge)gremlinElement;
-      Vertex outGremlinVertex = gremlinEdge.outVertex();Object outId = outGremlinVertex == null ? -1 : outGremlinVertex.id();
-      Vertex inGremlinVertex = gremlinEdge.inVertex();Object inId = inGremlinVertex == null ? -1 : inGremlinVertex.id();
-      if (outId != null && inId != null) {
-        NodeDraft gephiNodeOut = GremlinDatabaseImporter.this.containerLoader.getNode(outId.toString());
-        NodeDraft gephiNodeIn = GremlinDatabaseImporter.this.containerLoader.getNode(inId.toString());
-        if (gephiNodeOut != null && gephiNodeIn != null) {
-          EdgeDraft gephiEdge = factory.newEdgeDraft(gremlinIdStr);
-          gephiEdge.setSource(gephiNodeOut);gephiEdge.setTarget(gephiNodeIn);
-          setLabel(gephiEdge, gremlinLabel);
-          setAttributes(gephiEdge, gremlinAttributes);
-          GremlinDatabaseImporter.this.containerLoader.addEdge(gephiEdge);
+      EdgeDraft gephiEdge = GremlinDatabaseImporter.this.containerLoader.getEdge(gremlinIdStr);
+      if (gephiEdge == null) {
+        Vertex outGremlinVertex = gremlinEdge.outVertex();
+        Object outId = null;
+        if (outGremlinVertex != null) {
+          handleElement(outGremlinVertex);
+          outId = outGremlinVertex.id();
+        }
+        Vertex inGremlinVertex = gremlinEdge.inVertex();
+        Object inId = null;
+        if (inGremlinVertex != null) {
+          handleElement(inGremlinVertex);
+          inId = inGremlinVertex.id();
+        }
+        if (outId != null && inId != null) {
+          NodeDraft gephiNodeOut = GremlinDatabaseImporter.this.containerLoader.getNode(outId.toString());
+          NodeDraft gephiNodeIn = GremlinDatabaseImporter.this.containerLoader.getNode(inId.toString());
+          if (gephiNodeOut != null && gephiNodeIn != null) {
+            gephiEdge = factory.newEdgeDraft(gremlinIdStr);
+            gephiEdge.setSource(gephiNodeOut);gephiEdge.setTarget(gephiNodeIn);
+            setLabel(gephiEdge, gremlinLabel);
+            setAttributes(gephiEdge, gremlinAttributes);
+            GremlinDatabaseImporter.this.containerLoader.addEdge(gephiEdge);
+          } else {
+            if (gephiNodeOut == null) {
+              System.out.println("### Source Node not found " + outId.toString());
+            }
+            if (gephiNodeIn == null) {
+              System.out.println("### Target Node not found " + inId.toString());
+            }
+          }
         } else {
-          if (gephiNodeOut == null) {
-            System.out.println("### Source Node not found " + outId.toString());
+          if (outId == null) {
+            System.out.println("### Source Node id is null");
           }
-          if (gephiNodeIn == null) {
-            System.out.println("### Target Node not found " + inId.toString());
+          if (inId == null) {
+            System.out.println("### Target Node id is null");
           }
-        }
-      } else {
-        if (outId == null) {
-          System.out.println("### Source Node id is null");
-        }
-        if (inId == null) {
-          System.out.println("### Target Node id is null");
         }
       }
+      gephiElement = gephiEdge;
     } else {
       System.out.println("### unknown gremlin element type " + gremlinElement.getClass().getName());
+      gephiElement = null;
     }
+    return gephiElement;
   }
   
   private static void setAttributes(ElementDraft gephiElement, Map<String, Object> gremlinAttributes) {

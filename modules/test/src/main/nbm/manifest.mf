@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
-OpenIDE-Module-Name: test
-OpenIDE-Module-Short-Description: A
-OpenIDE-Module-Long-Description: A
+OpenIDE-Module-Name: GremlinCinnect
+OpenIDE-Module-Short-Description: Connect to gremlin server directly
+OpenIDE-Module-Long-Description: Connect to gremlin server directly using gremlin API
 OpenIDE-Module-Display-Category: Import

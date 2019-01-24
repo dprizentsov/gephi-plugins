@@ -137,7 +137,7 @@ public class ConnectionDialog implements ImporterUI {
   }
 
   public String getDisplayName() {
-    return "Connect to gremlin server...";
+    return "Gremlin server...";
   }
 
   public boolean isUIForImporter(Importer imprtr) {

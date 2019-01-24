@@ -7,12 +7,12 @@
         <version>0.9.2</version>
     </parent>
 
-    <groupId>test</groupId>
-    <artifactId>test</artifactId>
+    <groupId>com.rocketsoft.test</groupId>
+    <artifactId>gremlinConnect</artifactId>
     <version>1.0.0</version>
     <packaging>nbm</packaging>
 
-    <name>test</name>
+    <name>gremlinConnect</name>
 
     <dependencies>
         <!-- Insert dependencies here -->
