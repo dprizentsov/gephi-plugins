@@ -1,5 +1,12 @@
 package com.rocketsoft.test;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,6 +33,9 @@ import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Element;
 import org.apache.tinkerpop.gremlin.structure.Property;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import sun.net.www.http.HttpClient;
 
 /**
  *
@@ -40,6 +50,7 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
   public String username;
   public String password;
   public String query;
+  public String serviceUrl;
   
   public void setDatabase(Database dtbs) {
     this.database = (GremlinDatabase)dtbs;
@@ -55,7 +66,114 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
     containerLoader.setAllowSelfLoop(true);
     factory = cl.factory();
     
-    Cluster cluster = Cluster.build(address).port(Integer.parseInt(port)).create();
+    
+    importNewton();
+    return true;
+  }
+  
+  private void importNewton() {
+    try {
+      importNewton("g.V().toList()");
+      importNewton("g.E().toList()");
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+  
+  private void importNewton(String query) throws ProtocolException, MalformedURLException, IOException {
+    URL url = new URL(serviceUrl + "?" + query);
+    HttpURLConnection con = (HttpURLConnection) url.openConnection();
+    con.setRequestMethod("GET");
+    con.connect();
+    BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+    String inputLine;
+    StringBuilder content = new StringBuilder();
+    while ((inputLine = in.readLine()) != null) {
+      content.append(inputLine);
+    }
+    in.close();
+    //System.out.println(content);
+    JSONObject contectJson = new JSONObject(content.toString());
+    JSONObject statusJson = contectJson.getJSONObject("status");
+    if (statusJson != null && statusJson.getInt("code") == 200) {
+      JSONObject resultJson = contectJson.getJSONObject("result");
+      if (resultJson != null) {
+        JSONArray dataJsonArray = resultJson.getJSONArray("data");
+        for (int i = 0; i < dataJsonArray.length(); i++) {
+          JSONObject graphElementJson = dataJsonArray.getJSONObject(i);
+          handleGraphElementJson(graphElementJson);
+        }
+      } else {
+        throw new RuntimeException("Empty result");
+      }
+    } else {
+      throw new RuntimeException("status: " + statusJson);
+    }
+  }
+  
+  private void handleGraphElementJson(JSONObject graphElementJson) {
+    ElementDraft gephiElement;
+    int gtaphObjectId = graphElementJson.getInt("id");
+    String gtaphObjectIdString = Integer.toString(gtaphObjectId);
+    String gtaphObjectLabel = graphElementJson.getString("label");
+    String gtaphObjectType = graphElementJson.getString("type");
+    Map<String, Object> propertiesMap = null;
+    if (graphElementJson.has("properties")) {
+      propertiesMap = new HashMap<String, Object>();
+      JSONObject gtaphObjectProperties = graphElementJson.getJSONObject("properties");
+      for (String propertyName : gtaphObjectProperties.keySet()) {
+        Object propertyValue = gtaphObjectProperties.getJSONArray(propertyName).getJSONObject(0).get("value");
+        propertiesMap.put(propertyName, propertyValue);
+      }
+    }
+    if ("vertex".equals(gtaphObjectType)) {
+      //System.out.println("vertex " + gtaphObjectLabel);
+      NodeDraft gephiNode = GremlinDatabaseImporter.this.containerLoader.getNode(gtaphObjectIdString);
+      if (gephiNode == null) {
+        gephiNode = factory.newNodeDraft(gtaphObjectIdString);
+        GremlinDatabaseImporter.this.containerLoader.addNode(gephiNode);
+      }
+      setLabel(gephiNode, gtaphObjectLabel);
+      setAttributes(gephiNode, propertiesMap);
+      gephiElement = gephiNode;
+    } else if ("edge".equals(gtaphObjectType)) {
+      //System.out.println("edge " + gtaphObjectLabel);
+      EdgeDraft gephiEdge = GremlinDatabaseImporter.this.containerLoader.getEdge(gtaphObjectIdString);
+      if (gephiEdge == null) {
+        int outVertexId = graphElementJson.getInt("outV");
+        int inVertexId = graphElementJson.getInt("inV");
+        String outVertexIdString = Integer.toString(outVertexId);
+        String inVertexIdString = Integer.toString(inVertexId);
+        NodeDraft gephiNodeOut = GremlinDatabaseImporter.this.containerLoader.getNode(outVertexIdString);
+        NodeDraft gephiNodeIn = GremlinDatabaseImporter.this.containerLoader.getNode(inVertexIdString);
+        if (gephiNodeOut != null && gephiNodeIn != null) {
+          gephiEdge = factory.newEdgeDraft(gtaphObjectIdString);
+          gephiEdge.setSource(gephiNodeOut);gephiEdge.setTarget(gephiNodeIn);
+          setLabel(gephiEdge, gtaphObjectLabel);
+          setAttributes(gephiEdge, propertiesMap);
+          GremlinDatabaseImporter.this.containerLoader.addEdge(gephiEdge);
+        } else {
+          if (gephiNodeOut == null) {
+            System.out.println("### Source Node not found " + outVertexIdString);
+          }
+          if (gephiNodeIn == null) {
+            System.out.println("### Target Node not found " + inVertexIdString);
+          }
+        }
+      }
+      gephiElement = gephiEdge;
+    } else {
+      System.out.println("### Unknown type of object  " + gtaphObjectType);
+    }
+  }
+  
+  private void importGremlin() {
+    Cluster.Builder builder = Cluster.build(address);
+    builder.port(Integer.parseInt(port));
+    if (username != null && !username.isEmpty() && password != null) {
+      builder.credentials(username, password);
+    }
+    Cluster cluster = builder.create();
     Client client = cluster.connect();
     
     Consumer<Result> resultHandler = new Consumer<Result>() {
@@ -75,8 +193,6 @@ public class GremlinDatabaseImporter implements DatabaseImporter {
     if (query != null && !query.isEmpty()) {//if user specified a request
       client.submit(query).forEach(resultHandler);
     }
-    
-    return true;
   }
   
   private ElementDraft handleElement(Element gremlinElement) {

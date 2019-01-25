@@ -14,6 +14,7 @@ import org.openide.util.lookup.ServiceProvider;
 @ServiceProvider(service = ImporterUI.class)
 public class ConnectionDialog implements ImporterUI {
   
+  private javax.swing.JTextField serviceUrlText;
   private javax.swing.JTextField addressText;
   private javax.swing.JLabel jLabel1;
   private javax.swing.JLabel jLabel2;
@@ -25,8 +26,65 @@ public class ConnectionDialog implements ImporterUI {
   private javax.swing.JEditorPane queryText;
   private javax.swing.JTextField usernameText;
   
-  private void initComponents(final JPanel that) {
+  private void initComponentsForNewton(final JPanel that) {
 
+    serviceUrlText = new javax.swing.JTextField();
+    jLabel1 = new javax.swing.JLabel();
+    passwordText = new javax.swing.JPasswordField();
+    usernameText = new javax.swing.JTextField();
+    jLabel2 = new javax.swing.JLabel();
+    jLabel3 = new javax.swing.JLabel();
+
+    serviceUrlText.setText("http://127.0.0.1:8080/ws/model/gremlin");
+
+    jLabel1.setText("Newton URL");
+
+    passwordText.setText("password");
+
+    usernameText.setText("administrator");
+
+    jLabel2.setText("Username");
+
+    jLabel3.setText("Password");
+
+    javax.swing.GroupLayout layout = new javax.swing.GroupLayout(that);
+    that.setLayout(layout);
+    layout.setHorizontalGroup(
+      layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+      .addGroup(layout.createSequentialGroup()
+        .addContainerGap()
+        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+          .addComponent(jLabel1)
+          .addComponent(jLabel2)
+          .addComponent(jLabel3))
+        .addGap(18, 18, 18)
+        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+          .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+            .addComponent(usernameText, javax.swing.GroupLayout.DEFAULT_SIZE, 127, Short.MAX_VALUE)
+            .addComponent(passwordText))
+          .addComponent(serviceUrlText, javax.swing.GroupLayout.PREFERRED_SIZE, 295, javax.swing.GroupLayout.PREFERRED_SIZE))
+        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+    );
+    layout.setVerticalGroup(
+      layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+      .addGroup(layout.createSequentialGroup()
+        .addGap(22, 22, 22)
+        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+          .addComponent(serviceUrlText, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+          .addComponent(jLabel1))
+        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+          .addComponent(usernameText, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+          .addComponent(jLabel2))
+        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+          .addComponent(passwordText, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+          .addComponent(jLabel3))
+        .addContainerGap(25, Short.MAX_VALUE))
+    );
+  }
+  
+  private void initComponents(final JPanel that) {
     addressText = new javax.swing.JTextField();
     jLabel1 = new javax.swing.JLabel();
     portText = new javax.swing.JTextField();
@@ -120,7 +178,7 @@ public class ConnectionDialog implements ImporterUI {
   public JPanel getPanel() {
     System.out.println("getPanel");
     JPanel panel = new JPanel();
-    initComponents(panel);
+    initComponentsForNewton(panel);
     return panel;//TODO add address:poer, user/password, request
   }
 
@@ -128,16 +186,17 @@ public class ConnectionDialog implements ImporterUI {
     System.out.println("unsetup " + bln);//Ok == true, Cancel == false
     //TODO put user values to importer
     if (bln) {
-      importer.address = addressText.getText();
-      importer.port = portText.getText();
+      //importer.address = addressText.getText();
+      //importer.port = portText.getText();
       importer.username = usernameText.getText();
       importer.password = passwordText.getText();
-      importer.query = queryText.getText();
+      //importer.query = queryText.getText();
+      importer.serviceUrl = serviceUrlText.getText();
     }
   }
 
   public String getDisplayName() {
-    return "Gremlin server...";
+    return "Newton server...";
   }
 
   public boolean isUIForImporter(Importer imprtr) {
