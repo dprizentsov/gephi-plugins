@@ -8,11 +8,11 @@
     </parent>
 
     <groupId>com.rocketsoft.test</groupId>
-    <artifactId>gremlinConnect</artifactId>
+    <artifactId>newtonConnect</artifactId>
     <version>1.0.0</version>
     <packaging>nbm</packaging>
 
-    <name>gremlinConnect</name>
+    <name>newtonConnect</name>
 
     <dependencies>
         <!-- Insert dependencies here -->
@@ -70,6 +70,12 @@
             <groupId>org.apache.commons.lang3</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>3.3.1</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.json/json -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20180813</version>
         </dependency>
     </dependencies>
 
